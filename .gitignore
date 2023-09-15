@@ -1,0 +1,6 @@
+*.o
+*.exe
+*.psd
+/max2/db/
+/max2/incremental_db/
+/max2/output_files/

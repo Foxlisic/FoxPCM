@@ -1,3 +1,4 @@
+// vec = 00 RESET; 01 IRQ1; 10 IRQ2; 11 BRK
 module core
 (
     input               clock,
@@ -62,15 +63,18 @@ always @(posedge clock)
 // Состояние сброса процессора
 if (reset_n == 1'b0) begin
 
-    //       NV1BDIZC
-    p  <= 8'b01100001;
-    t  <= 1'b0;
-    cp <= 1'b0;
-    pc <= 16'h0000;
-    a  <= 8'h80;
-    x  <= 8'hFE;
-    y  <= 8'hDA;
-    s  <= 8'h00;
+    //        NV1BDIZC
+    p   <= 8'b01100001;
+    t   <= 1'b0;
+    cp  <= 1'b0;
+    pc  <= 16'h0000;
+    a   <= 8'h80;
+    x   <= 8'hFE;
+    y   <= 8'hDA;
+    s   <= 8'h00;
+    t   <= BRK;
+    vec <= 2'b00;       // RESET
+    m   <= 3;           // Без записи в стек
 
 end
 // Активное состояние
@@ -277,15 +281,17 @@ else if (ce) begin
 
     endcase
 
-    // Программный BRK
+    // Вызов BRK или прерывания
     BRK: case (m)
 
-        0: begin m <= 1;    we <= 1; ab      <= {8'h01, s};  out <= pc[15:8]; cp <= 1; end
-        1: begin m <= 2;    we <= 1; ab[7:0] <= ab[7:0] - 1; out <= pc[7:0]; end
-        2: begin m <= 3;    we <= 1; ab[7:0] <= ab[7:0] - 1; out <= p | 8'h10; end
-        3: begin m <= 4;    ab <= {13'h1FFF, vec, 1'b0}; p[2] <= 1'b1; end
+        // BRK|IRQ стадия
+        0: begin m <= 1;    we <= 1; ab      <= {8'h01, s};  out <= pc[15:8]; cp <= 1; s <= s - 3; end
+        1: begin m <= 2;    we <= 1; ab[7:0] <= ab[7:0] - 1; out <= pc[ 7:0]; end
+        2: begin m <= 3;    we <= 1; ab[7:0] <= ab[7:0] - 1; out <= p | 8'h10; p[2] <= 1'b1; end
+        // RESET стадия
+        3: begin m <= 4;    ab <= {13'h1FFF, vec, 1'b0}; end
         4: begin m <= 5;    pc[ 7:0] <= in; ab[0] <= 1'b1; end
-        5: begin t <= LDC;  pc[15:8] <= in; cp <= 0; s <= s - 3; end
+        5: begin t <= LDC;  pc[15:8] <= in; cp <= 0; end
 
     endcase
 

@@ -56,6 +56,15 @@ C65::C65(int w, int h, int scale, int fps) {
     screen_buffer       = (Uint32*)malloc(width * height * sizeof(Uint32));
     frame_length        = 1000 / (fps ? fps : 1);
     frame_prev_ticks    = SDL_GetTicks();
+
+    cur_flash = 0;
+    loc_x = 0;
+    loc_y = 0;
+
+    for (int i = 0; i < 0x800; i++) {
+        sram[0xF000 + i] = 0x00;
+        sram[0xF800 + i] = 0x07;
+    }
 }
 
 C65::~C65() {
@@ -87,7 +96,7 @@ void C65::load(int argc, char** argv) {
             FILE* fp = fopen(argv[i], "rb");
             if (fp) {
 
-                // fread(program, 2, 65536, fp);
+                if (fread(sram, 1, 65536, fp)) { }
                 fclose(fp);
 
             } else {
@@ -97,11 +106,6 @@ void C65::load(int argc, char** argv) {
         }
 
         i++;
-    }
-
-    if (argc > 1) {
-
-
     }
 }
 
@@ -133,11 +137,11 @@ void C65::frame() {
         }
         */
 
-        // @TODO instr += step();
+        instr += step();
     }
 
     // TIMER IRQ
-    // if (flag.i && (intr_mask & 1) && eoi == 0) { eoi = 1; interruptcall(1); }
+    // if (reg_p && (intr_mask & 1) && eoi == 0) { eoi = 1; brk(); }
 
     TM = SDL_GetTicks() - TM;
 
@@ -151,13 +155,13 @@ void C65::frame() {
         target = 1000000;
     }
 
-    // Мигание курсора
-    cur_flash = (cur_flash < 25) ? cur_flash + 1 : 0;
-
     // Обновить экран при каждом мигании
     if (cur_flash == 0 || cur_flash == 12) {
-        // switch_vm(videomode);
+        refresh();
     }
+
+    // Мигание курсора
+    cur_flash = (cur_flash < 25) ? cur_flash + 1 : 0;
 }
 
 // Ожидание событий
@@ -178,35 +182,8 @@ int C65::main() {
                 }
 
                 // https://wiki.machinesdl.org/SDL_Scancode
-                case SDL_KEYDOWN:
-
-                    kbd_scancode(evt.key.keysym.scancode, 0);
-                    break;
-
-                case SDL_KEYUP:
-
-                    kbd_scancode(evt.key.keysym.scancode, 1);
-                    break;
-
-                // Движение мыши
-                case SDL_MOUSEMOTION: {
-
-                    mx = evt.motion.x;
-                    my = evt.motion.y;
-                    break;
-                }
-
-                // Движение мыши
-                case SDL_MOUSEBUTTONDOWN:
-                case SDL_MOUSEBUTTONUP: {
-
-                    // SDL_BUTTON_LEFT | SDL_BUTTON_MIDDLE | SDL_BUTTON_RIGHT
-                    // SDL_PRESSED | SDL_RELEASED
-                    mb = evt.button.button;
-                    ms = evt.button.state;
-
-                    break;
-                }
+                case SDL_KEYDOWN:   kbd_scancode(evt.key.keysym.scancode, 0); break;
+                case SDL_KEYUP:     kbd_scancode(evt.key.keysym.scancode, 1); break;
 
                 // Все другие события
                 default: break;
@@ -258,6 +235,8 @@ void C65::pset(int x, int y, Uint32 cl) {
 // Печать символа в указанном месте
 void C65::pchr(int x, int y, uint8_t ch) {
 
+    int cur_x = x, cur_y = y;
+
     x *= 8;
     y *= 16;
 
@@ -269,15 +248,14 @@ void C65::pchr(int x, int y, uint8_t ch) {
             int t = m;
 
             // Подчеркивание
-            if (cur_x == loc_x && cur_y == loc_y && i >= 14 && cur_flash < 12)
+            if (cur_x == loc_x && cur_y == loc_y && i >= 14 && cur_flash < 12) {
                 t |= 0xFF;
+            }
 
-            int cl = t & (1 << (7-j)) ? fore : back;
+            int cl = t & (1 << (7 - j)) ? fore : back;
             if (cl >= 0) pset(x + j, y + i, cl);
         }
     }
-
-    loc_x++;
 }
 
 // Сканирование нажатой клавиши

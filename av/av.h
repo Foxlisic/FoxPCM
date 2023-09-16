@@ -6,6 +6,14 @@
 
 #include "ansi.h"
 
+
+// Палитра для DOS
+static const int DOS16[16] =
+{
+    0x000000, 0x000088, 0x008800, 0x008888, 0x880000, 0x880088, 0x885500, 0xaaaaaa, // 0
+    0x555555, 0x5555ff, 0x55ff55, 0x55ffff, 0xff5555, 0xff55ff, 0xffff55, 0xffffff, // 8
+};
+
 // Операнды
 enum OperandType
 {
@@ -144,7 +152,6 @@ public:
     uint8_t     sram[65536];
     uint8_t     reg_p, reg_s, reg_x, reg_y, reg_a;
     uint16_t    pc;
-    int         cycles_ext;
 
     // Конструктор и деструктор
      C65(int w, int h, int scale, int fps);
@@ -161,6 +168,8 @@ public:
     void        kbd_scancode(int scancode, int release);
     void        kbd_push(uint8_t code);
     void        spi_cmd(uint8_t data);
+    void        updatevm(int x);
+    void        refresh();
 
     // CPU
     uint8_t read(int x);

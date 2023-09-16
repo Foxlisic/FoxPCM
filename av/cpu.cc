@@ -3,7 +3,7 @@
 // Сброс процессора
 void C65::reset() {
 
-    pc      = 0x0000;
+    pc      = 0x0200;   // Сразу же за областью стека
     reg_a   = 0x00;
     reg_x   = 0x00;
     reg_y   = 0x00;
@@ -15,14 +15,11 @@ int C65::effective(int addr) {
 
     int opcode, iaddr, tmp, rt, pt;
 
-    // Чтение опкода
-    opcode = read(addr++);
-
-    // Чтобы адрес не вышел за пределы
-    addr &= 0xffff;
+    opcode = read(addr++);  // Чтение опкода
+    addr  &= 0xffff;        // Чтобы адрес не вышел за пределы
 
     // Разобрать операнд
-    switch (operand_types[ opcode ]) {
+    switch (operand_types[opcode]) {
 
         // PEEK( PEEK( (arg + X) % 256) + PEEK((arg + X + 1) % 256) * 256
         // Indirect, X (b8,X)
@@ -37,14 +34,10 @@ int C65::effective(int addr) {
         case NDY: {
 
             tmp = read(addr);
-            rt  = read(0xff & tmp);
-            rt |= read(0xff & (tmp + 1)) << 8;
+            rt  = read( tmp      & 0xFF);
+            rt |= read((tmp + 1) & 0xFF) << 8;
             pt  = rt;
-            rt  = (rt + reg_y) & 0xffff;
-
-            if ((pt & 0xff00) != (rt & 0xff00))
-                cycles_ext++;
-
+            rt  = (rt + reg_y) & 0xFFFF;
             return rt;
         }
 
@@ -52,10 +45,10 @@ int C65::effective(int addr) {
         case ZP:  return read( addr );
 
         // Zero Page, X
-        case ZPX: return (read(addr) + reg_x) & 0x00ff;
+        case ZPX: return (read(addr) + reg_x) & 0x00FF;
 
         // Zero Page, Y
-        case ZPY: return (read(addr) + reg_y) & 0x00ff;
+        case ZPY: return (read(addr) + reg_y) & 0x00FF;
 
         // Absolute
         case ABS: return readw(addr);
@@ -65,11 +58,7 @@ int C65::effective(int addr) {
 
             pt = readw(addr);
             rt = pt + reg_x;
-
-            if ((pt & 0xff00) != (rt & 0xff00))
-                cycles_ext++;
-
-            return rt & 0xffff;
+            return rt & 0xFFFF;
         }
 
         // Absolute, Y
@@ -77,11 +66,7 @@ int C65::effective(int addr) {
 
             pt = readw(addr);
             rt = pt + reg_y;
-
-            if ((pt & 0xff00) != (rt & 0xff00))
-                cycles_ext++;
-
-            return rt & 0xffff;
+            return rt & 0xFFFF;
         }
 
         // Indirect
@@ -96,7 +81,7 @@ int C65::effective(int addr) {
         case REL: {
 
             iaddr = read(addr);
-            return (iaddr + addr + 1 + (iaddr < 128 ? 0 : -256)) & 0xffff;
+            return (iaddr + addr + 1 + (iaddr < 128 ? 0 : -256)) & 0xFFFF;
         }
     }
 
@@ -106,7 +91,7 @@ int C65::effective(int addr) {
 // Вычисление количества cycles для branch
 int C65::branch(int addr, int iaddr) {
 
-    if ((addr & 0xff00) != (iaddr & 0xff00))
+    if ((addr & 0xFF00) != (iaddr & 0xFF00))
         return 2;
 
     return 1;
@@ -115,10 +100,10 @@ int C65::branch(int addr, int iaddr) {
 // Вызов прерывания
 void C65::brk() {
 
-    push((pc >> 8) & 0xff);   // Вставка обратного адреса в стек
+    push((pc >> 8) & 0xff);         // Вставка обратного адреса в стек
     push(pc & 0xff);
-    set_break(1);                  // Установить BFlag перед вставкой
-    reg_p |= 0b00100000;           // 1
+    set_break(1);                   // Установить BFlag перед вставкой
+    reg_p |= 0b00100000;            // 1
     push(reg_p);
     set_interrupt(1);
 }
@@ -126,28 +111,24 @@ void C65::brk() {
 // Немаскируемое прерывание
 void C65::nmi() {
 
-    push((pc >> 8) & 0xff);      // Вставка обратного адреса в стек
+    push((pc >> 8) & 0xff);         // Вставка обратного адреса в стек
     push(pc & 0xff);
-    set_break(1);                     // Установить BFlag перед вставкой
-    reg_p |= 0b00100000;              // 1
+    set_break(1);                  // Установить BFlag перед вставкой
+    reg_p |= 0b00100000;           // 1
     push(reg_p);
     set_interrupt(1);
     pc = readw(0xFFFA);
 }
 
-
 // Исполнение шага инструкции
 int C65::step() {
 
-    int temp, optype, opname, ppurd = 1, src = 0;
-    int addr = pc, opcode;
-    int cycles_per_instr;
-
-    // Доп. циклы разбора адреса
-    cycles_ext = 0;
+    int temp, optype, opcode, opname, ppurd = 1, src = 0;
+    uint8_t  cycles_per_instr;
+    uint16_t addr = pc;
 
     // Определение эффективного адреса
-    int iaddr = effective(addr);
+    uint16_t iaddr = effective(addr);
 
     // Прочесть информацию по опкодам
     opcode = read(addr);
@@ -163,7 +144,7 @@ int C65::step() {
     addr = (addr + 1) & 0xffff;
 
     // Базовые циклы + доп. циклы
-    cycles_per_instr = cycles_basic[ opcode ] + cycles_ext;
+    cycles_per_instr = cycles_basic[ opcode ];
 
     // --------------------------------
     // Чтение операнда из памяти
@@ -274,7 +255,7 @@ int C65::step() {
             break;
         }
 
-        /* Флаги */
+        // Флаги
         case CLC: set_carry(0);     break;
         case SEC: set_carry(1);     break;
         case CLD: set_decimal(0);   break;
@@ -283,7 +264,7 @@ int C65::step() {
         case SEI: set_interrupt(1); break;
         case CLV: set_overflow(0);  break;
 
-        /* Сравнение A, X, Y с операндом */
+        // Сравнение A, X, Y с операндом
         case CMP:
         case CPX:
         case CPY: {
@@ -295,7 +276,7 @@ int C65::step() {
             break;
         }
 
-        /* Уменьшение операнда на единицу */
+        // Уменьшение операнда на единицу
         case DEC: {
 
             src = (src - 1) & 0xff;
@@ -305,7 +286,7 @@ int C65::step() {
             break;
         }
 
-        /* Уменьшение X на единицу */
+        // Уменьшение X на единицу
         case DEX: {
 
             reg_x = (reg_x - 1) & 0xff;
@@ -314,7 +295,7 @@ int C65::step() {
             break;
         }
 
-        /* Уменьшение Y на единицу */
+        // Уменьшение Y на единицу
         case DEY: {
 
             reg_y = (reg_y - 1) & 0xff;
@@ -323,7 +304,7 @@ int C65::step() {
             break;
         }
 
-        /* Исключающее ИЛИ */
+        // Исключающее ИЛИ
         case EOR: {
 
             src ^= reg_a;
@@ -333,7 +314,7 @@ int C65::step() {
             break;
         }
 
-        /* Увеличение операнда на единицу */
+        // Увеличение операнда на единицу
         case INC: {
 
             src = (src + 1) & 0xff;
@@ -343,7 +324,7 @@ int C65::step() {
             break;
         }
 
-        /* Уменьшение X на единицу */
+        // Уменьшение X на единицу
         case INX: {
 
             reg_x = (reg_x + 1) & 0xff;
@@ -352,7 +333,7 @@ int C65::step() {
             break;
         }
 
-        /* Увеличение Y на единицу */
+        // Увеличение Y на единицу
         case INY: {
 
             reg_y = (reg_y + 1) & 0xff;
@@ -361,20 +342,20 @@ int C65::step() {
             break;
         }
 
-        /* Переход по адресу */
+        // Переход по адресу
         case JMP: addr = iaddr; break;
 
-        /* Вызов подпрограммы */
+        // Вызов подпрограммы
         case JSR: {
 
             addr = (addr - 1) & 0xffff;
-            push((addr >> 8) & 0xff);   /* Вставка обратного адреса в стек (-1) */
+            push((addr >> 8) & 0xff);   // Вставка обратного адреса в стек (-1)
             push(addr & 0xff);
             addr = iaddr;
             break;
         }
 
-        /* Загрузка операнда в аккумулятор */
+        // Загрузка операнда в аккумулятор
         case LDA: {
 
             set_sign(src);
@@ -383,7 +364,7 @@ int C65::step() {
             break;
         }
 
-        /* Загрузка операнда в X */
+        // Загрузка операнда в X
         case LDX: {
 
             set_sign(src);
@@ -392,7 +373,7 @@ int C65::step() {
             break;
         }
 
-        /* Загрузка операнда в Y */
+        // Загрузка операнда в Y
         case LDY: {
 
             set_sign(src);
@@ -401,7 +382,7 @@ int C65::step() {
             break;
         }
 
-        /* Логический сдвиг вправо */
+        // Логический сдвиг вправо
         case LSR: {
 
             set_carry(src & 0x01);
@@ -412,7 +393,7 @@ int C65::step() {
             break;
         }
 
-        /* Логическое побитовое ИЛИ */
+        // Логическое побитовое ИЛИ
         case ORA: {
 
             src |= reg_a;
@@ -422,12 +403,12 @@ int C65::step() {
             break;
         }
 
-        /* Стек */
+        // Стек
         case PHA: push(reg_a); break;
         case PHP: push((reg_p | 0x30)); break;
         case PLP: reg_p = pull(); break;
 
-        /* Извлечение из стека в A */
+        // Извлечение из стека в A
         case PLA: {
 
             src = pull();
@@ -437,7 +418,7 @@ int C65::step() {
             break;
         }
 
-        /* Циклический сдвиг влево */
+        // Циклический сдвиг влево
         case ROL: {
 
             src <<= 1;
@@ -452,7 +433,7 @@ int C65::step() {
             break;
         }
 
-        /* Циклический сдвиг вправо */
+        // Циклический сдвиг вправо
         case ROR: {
 
             if (if_carry()) src |= 0x100;
@@ -466,7 +447,7 @@ int C65::step() {
             break;
         }
 
-        /* Возврат из прерывания */
+        // Возврат из прерывания
         case RTI: {
 
             reg_p = pull();
@@ -476,7 +457,7 @@ int C65::step() {
             break;
         }
 
-        /* Возврат из подпрограммы */
+        // Возврат из подпрограммы
         case RTS: {
 
             src  = pull();
@@ -485,7 +466,7 @@ int C65::step() {
             break;
         }
 
-        /* Вычитание */
+        // Вычитание
         case SBC: {
 
             temp = reg_a - src - (if_carry() ? 0 : 1);
@@ -498,12 +479,12 @@ int C65::step() {
             break;
         }
 
-        /* Запись содержимого A,X,Y в память */
+        // Запись содержимого A,X,Y в память
         case STA: write(iaddr, reg_a); break;
         case STX: write(iaddr, reg_x); break;
         case STY: write(iaddr, reg_y); break;
 
-        /* Пересылка содержимого аккумулятора в регистр X */
+        // Пересылка содержимого аккумулятора в регистр X
         case TAX: {
 
             src = reg_a;
@@ -513,7 +494,7 @@ int C65::step() {
             break;
         }
 
-        /* Пересылка содержимого аккумулятора в регистр Y */
+        // Пересылка содержимого аккумулятора в регистр Y
         case TAY: {
 
             src = reg_a;
@@ -523,7 +504,7 @@ int C65::step() {
             break;
         }
 
-        /* Пересылка содержимого S в регистр X */
+        // Пересылка содержимого S в регистр X
         case TSX: {
 
             src = reg_s;
@@ -533,7 +514,7 @@ int C65::step() {
             break;
         }
 
-        /* Пересылка содержимого X в регистр A */
+        // Пересылка содержимого X в регистр A
         case TXA: {
 
             src = reg_x;
@@ -543,10 +524,14 @@ int C65::step() {
             break;
         }
 
-        /* Пересылка содержимого X в регистр S */
-        case TXS: reg_s = reg_x; break;
+        // Пересылка содержимого X в регистр S
+        case TXS: {
 
-        /* Пересылка содержимого Y в регистр A */
+            reg_s = reg_x;
+            break;
+        }
+
+        // Пересылка содержимого Y в регистр A
         case TYA: {
 
             src = reg_y;
@@ -562,7 +547,7 @@ int C65::step() {
 
         case SLO: {
 
-            /* ASL */
+            // ASL
             set_carry(src & 0x80);
             src <<= 1;
             src &= 0xff;
@@ -572,7 +557,7 @@ int C65::step() {
             if (optype == ACC) reg_a = src;
             else write(iaddr, src);
 
-            /* ORA */
+            // ORA
             src |= reg_a;
             set_sign(src);
             set_zero(src);
@@ -582,7 +567,7 @@ int C65::step() {
 
         case RLA: {
 
-            /* ROL */
+            // ROL
             src <<= 1;
             if (if_carry()) src |= 0x1;
             set_carry(src > 0xff);
@@ -591,7 +576,7 @@ int C65::step() {
             set_zero(src);
             if (optype == ACC) reg_a = src; else write(iaddr, src);
 
-            /* AND */
+            // AND
             src &= reg_a;
             set_sign(src);
             set_zero(src);
@@ -601,7 +586,7 @@ int C65::step() {
 
         case RRA: {
 
-            /* ROR */
+            // ROR
             if (if_carry()) src |= 0x100;
             set_carry(src & 0x01);
             src >>= 1;
@@ -609,7 +594,7 @@ int C65::step() {
             set_zero(src);
             if (optype == ACC) reg_a = src; else write(iaddr, src);
 
-            /* ADC */
+            // ADC
             temp = src + reg_a + (reg_p & 1);
             set_zero(temp & 0xff);
             set_sign(temp);
@@ -622,14 +607,14 @@ int C65::step() {
 
         case SRE: {
 
-            /* LSR */
+            // LSR
             set_carry(src & 0x01);
             src >>= 1;
             set_sign(src);
             set_zero(src);
             if (optype == ACC) reg_a = src; else write(iaddr, src);
 
-            /* EOR */
+            // EOR
             src ^= reg_a;
             set_sign(src);
             set_zero(src);
@@ -640,13 +625,13 @@ int C65::step() {
 
         case DCP: {
 
-            /* DEC */
+            // DEC
             src = (src - 1) & 0xff;
             set_sign(src);
             set_zero(src);
             write(iaddr, src);
 
-            /* CMP */
+            // CMP
             src = reg_a - src;
             set_carry(src >= 0);
             set_sign(src);
@@ -657,13 +642,13 @@ int C65::step() {
         // Увеличить на +1 и вычесть из A полученное значение
         case ISC: {
 
-            /* INC */
+            // INC
             src = (src + 1) & 0xff;
             set_sign(src);
             set_zero(src);
             write(iaddr, src);
 
-            /* SBC */
+            // SBC
             temp = reg_a - src - (if_carry() ? 0 : 1);
 
             set_sign(temp);
@@ -689,26 +674,26 @@ int C65::step() {
         // AND + Carry
         case AAC: {
 
-            /* AND */
+            // AND
             src &= reg_a;
             set_sign(src);
             set_zero(src);
             reg_a = src;
 
-            /* Carry */
+            // Carry
             set_carry(reg_a & 0x80);
             break;
         }
 
         case ASR: {
 
-            /* AND */
+            // AND
             src &= reg_a;
             set_sign(src);
             set_zero(src);
             reg_a = src;
 
-            /* LSR A */
+            // LSR A
             set_carry(reg_a & 0x01);
             reg_a >>= 1;
             set_sign(reg_a);
@@ -718,13 +703,13 @@ int C65::step() {
 
         case ARR: {
 
-            /* AND */
+            // AND
             src &= reg_a;
             set_sign(src);
             set_zero(src);
             reg_a = src;
 
-            /* P[6] = A[6] ^ A[7]: Переполнение */
+            // P[6] = A[6] ^ A[7]: Переполнение
             set_overflow((reg_a ^ (reg_a >> 1)) & 0x40);
 
             temp = (reg_a >> 7) & 1;
@@ -741,7 +726,7 @@ int C65::step() {
 
             reg_a |= 0xFF;
 
-            /* AND */
+            // AND
             src &= reg_a;
             set_sign(src);
             set_zero(src);

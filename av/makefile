@@ -1,9 +1,10 @@
 FILES=avemu.o av.o sd.o cpu.o io.o
 CONF=-lSDL2 -Wall -lm
 
-all: win
+all: lin
 lin: $(FILES)
 	g++ $(FILES) $(CONF) -o avemu
+	./avemu
 
 win: $(FILES)
 	g++ $(FILES) -mwindows $(CONF) -o avemu.exe

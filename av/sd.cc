@@ -112,7 +112,7 @@ void C65::spi_cmd(uint8_t data) {
                 spi_file = fopen("sd.img", "ab+");
                 if (spi_file == NULL) { printf("Error open file\n"); exit(0); }
                 fseek(spi_file, 512 * spi_lba, SEEK_SET);
-                (void) fread(spi_sector, 1, 512, spi_file);
+                if (fread(spi_sector, 1, 512, spi_file)) { }
                 fclose(spi_file);
 
             } else if (spi_phase == 1) {
